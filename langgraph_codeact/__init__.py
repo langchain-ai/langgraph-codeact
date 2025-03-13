@@ -1,10 +1,11 @@
 import inspect
 from collections import ChainMap
-from typing import Any, Callable, Optional, Sequence
+from typing import Any, Callable, Optional, Sequence, Callable, Union
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, MessageLikeRepresentation
-from langchain_core.tools import Tool
+from langchain_core.tools import BaseTool
+from langchain_core.tools import tool as create_tool
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.func import entrypoint, task
@@ -17,23 +18,28 @@ DEFAULT_PROMPT = """You will be given a task to perform. You should output eithe
 
 
 def create_codeact(
-    tools: Sequence[Tool],
+    tools: Sequence[Union[BaseTool, Callable]],
     model: BaseChatModel,
     eval: Callable[[str, dict[str, Callable]], str],
     *,
-    prompt: str = DEFAULT_PROMPT,
+    prompt: Optional[str] = None,
     checkpointer: Optional[BaseCheckpointSaver] = None,
     store: Optional[BaseStore] = None,
     config_schema: Optional[type[Any]] = None,
 ):
+    _tools = [t if isinstance(t, BaseTool) else create_tool(t) for t in tools]
     # create the prompt
-    prompt = """
-{prompt}
+    prompt = f"""
+{prompt or ""}
+
+You will be given a task to perform. You should output either
+- a Python code snippet that provides the solution to the task, or a step towards the solution. Any output you want to extract from the code should be printed to the console. Code should be output in a fenced code block.
+- text to be shown directly to the user, if you want to ask for more information or provide the final answer.
 
 In addition to the Python Standard Library, you can use the following functions:
 """
 
-    for tool in tools:
+    for tool in _tools:
         prompt += f'''
 def {tool.name}{str(inspect.signature(tool.func))}:
     """{tool.description}"""
@@ -42,7 +48,9 @@ def {tool.name}{str(inspect.signature(tool.func))}:
 
     prompt += """
 
-Variables defined at the top level of previous code snippets can be referenced in your code."""
+Variables defined at the top level of previous code snippets can be referenced in your code.
+
+Reminder: use python code snippets to call tools"""
 
     @task
     def agent(
@@ -69,21 +77,16 @@ Variables defined at the top level of previous code snippets can be referenced i
 
     @entrypoint(checkpointer=checkpointer, store=store, config_schema=config_schema)
     def codeact(
-        task: str, *, previous: Optional[tuple[list[BaseMessage], dict[str, Any]]]
+        state: dict
     ) -> str:
-        # will accumulate messages
-        msgs = [("system", prompt)]
         # will accumulate variables defined at script top-level
-        locs = {}
+        locs = state.get("locals", {})
         # contains locals + tools
-        context = ChainMap(locs, {tool.name: tool.func for tool in tools})
-        # add previous turn
-        if previous is not None:
-            prev_msgs, prev_locals = previous
-            msgs.extend(prev_msgs)
-            locs.update(prev_locals)
-        # add task to messages
-        msgs.append(("user", task))
+        context = ChainMap(locs, {tool.name: tool.func for tool in _tools})
+        
+        # Get messages from state
+        msgs = [{"role": "system", "content": prompt}] + state.get("messages", [])
+        
         while True:
             # call agent
             msg, script = agent(msgs).result()

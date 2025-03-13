@@ -115,9 +115,13 @@ import io
 
 def eval(code: str, _locals: dict) -> str:
     try:
-        with redirect_stdout(io.StringIO()) as f:
+        with contextlib.redirect_stdout(io.StringIO()) as f:
             exec(code, builtins.__dict__, _locals)
-        return f.getvalue()
+        result = f.getvalue()
+        if result:
+            return result
+        else:
+            return "<code ran, no output printed to stdout>"
     except Exception as e:
         return f"Error during execution: {repr(e)}"
 ```
