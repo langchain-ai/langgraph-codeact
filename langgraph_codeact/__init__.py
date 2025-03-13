@@ -12,11 +12,6 @@ from langgraph.func import entrypoint, task
 from langgraph.store.base import BaseStore
 
 
-DEFAULT_PROMPT = """You will be given a task to perform. You should output either
-- a Python code snippet that provides the solution to the task, or a step towards the solution. Any output you want to extract from the code should be printed to the console. Code should be output in a fenced code block.
-- text to be shown directly to the user, if you want to ask for more information or provide the final answer."""
-
-
 def create_codeact(
     tools: Sequence[Union[BaseTool, Callable]],
     model: BaseChatModel,
