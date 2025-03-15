@@ -10,17 +10,24 @@ from langchain_core.tools import tool as create_tool
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.func import entrypoint, task
 from langgraph.store.base import BaseStore
+from langgraph.graph import StateGraph, MessagesState
+from langgraph.types import Command
+from typing import Literal
+
+
+class CodeActState(MessagesState):
+    """state for codeact agent."""
+
+    script: str
+    context: dict
 
 
 def create_codeact(
-    tools: Sequence[Union[BaseTool, Callable]],
     model: BaseChatModel,
-    eval: Callable[[str, dict[str, Callable]], str],
+    tools: Sequence[Union[BaseTool, Callable]],
+    eval_fn: Callable[[str, dict[str, Callable]], str],
     *,
     prompt: Optional[str] = None,
-    checkpointer: Optional[BaseCheckpointSaver] = None,
-    store: Optional[BaseStore] = None,
-    config_schema: Optional[type[Any]] = None,
 ):
     _tools = [t if isinstance(t, BaseTool) else create_tool(t) for t in tools]
     # create the prompt
@@ -47,51 +54,29 @@ Variables defined at the top level of previous code snippets can be referenced i
 
 Reminder: use python code snippets to call tools"""
 
-    @task
-    def agent(
-        messages: Sequence[MessageLikeRepresentation],
-    ) -> tuple[AIMessage, Optional[str]]:
-        """Calls model for next script or answer."""
+    def call_model(state: CodeActState) -> Command[Literal["__end__", "sandbox"]]:
+        messages = [{"role": "system", "content": prompt}] + state["messages"]
         msg = model.invoke(messages)
-        # extract code block
         if "```" in msg.content:
             # get content between fences
             code = msg.content.split("```")[1]
             # remove first line, which is the language or empty string
             code = "\n".join(code.splitlines()[1:])
-            return msg, code
+            return Command(goto="sandbox", update={"messages": [msg], "script": code})
         else:
             # no code block, return None
-            return msg, None
+            return Command(goto="__end__", update={"messages": [msg], "script": ""})
 
-    @task
-    def sandbox(script: str, context: dict[str, Callable]) -> str:
-        """Executes the script in a sandboxed environment."""
+    def sandbox(state: CodeActState):
+        script = state["script"]
+        context = state.get("context", {})
         # execute the script
-        return eval(script, context)
+        output = eval_fn(script, context)
+        return {"messages": [{"role": "user", "content": output}]}
 
-    @entrypoint(checkpointer=checkpointer, store=store, config_schema=config_schema)
-    def codeact(
-        state: dict
-    ) -> str:
-        # will accumulate variables defined at script top-level
-        locs = state.get("locals", {})
-        # contains locals + tools
-        context = ChainMap(locs, {tool.name: tool.func for tool in _tools})
-        
-        # Get messages from state
-        msgs = [{"role": "system", "content": prompt}] + state.get("messages", [])
-        
-        while True:
-            # call agent
-            msg, script = agent(msgs).result()
-            # add message to history
-            msgs.append(msg)
-            if script is not None:
-                output = sandbox(script, context).result()
-                # add script output to messages
-                msgs.append(("user", output))
-            else:
-                return msg.content
-
-    return codeact
+    agent = StateGraph(CodeActState)
+    agent.add_node(call_model)
+    agent.add_node(sandbox)
+    agent.add_edge("__start__", "call_model")
+    agent.add_edge("sandbox", "call_model")
+    return agent
