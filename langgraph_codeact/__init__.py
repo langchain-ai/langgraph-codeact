@@ -12,7 +12,7 @@ from langgraph.func import entrypoint, task
 from langgraph.store.base import BaseStore
 from langgraph.graph import StateGraph, MessagesState
 from langgraph.types import Command
-from typing import Literal
+from typing import Literal, Tuple
 
 
 class CodeActState(MessagesState):
@@ -25,7 +25,7 @@ class CodeActState(MessagesState):
 def create_codeact(
     model: BaseChatModel,
     tools: Sequence[Union[BaseTool, Callable]],
-    eval_fn: Callable[[str, dict[str, Callable]], str],
+    eval_fn: Callable[[str, dict[str, Callable]], Tuple[str, dict]],
     *,
     prompt: Optional[str] = None,
 ):
@@ -71,8 +71,9 @@ Reminder: use python code snippets to call tools"""
         script = state["script"]
         context = state.get("context", {})
         # execute the script
-        output = eval_fn(script, context)
-        return {"messages": [{"role": "user", "content": output}]}
+        output, new_vars = eval_fn(script, context)
+        new_context = {**context, **new_vars}
+        return {"messages": [{"role": "user", "content": output}], "context": new_context}
 
     agent = StateGraph(CodeActState)
     agent.add_node(call_model)

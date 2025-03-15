@@ -109,21 +109,28 @@ You can use any code sandbox you want, pass it in as a function which accepts tw
 **NOTE:** use a sandboxed environment in production! The `eval` function below is just for demonstration purposes, not safe!
 
 ```py
+
 import builtins
 import contextlib
 import io
 
-def eval(code: str, _locals: dict) -> str:
+def eval(code: str, _locals: dict) -> tuple:
+    # Store original keys before execution
+    original_keys = set(_locals.keys())
+    
     try:
         with contextlib.redirect_stdout(io.StringIO()) as f:
             exec(code, builtins.__dict__, _locals)
         result = f.getvalue()
-        if result:
-            return result
-        else:
-            return "<code ran, no output printed to stdout>"
+        if not result:
+            result = "<code ran, no output printed to stdout>"
     except Exception as e:
-        return f"Error during execution: {repr(e)}"
+        result = f"Error during execution: {repr(e)}"
+        
+    # Determine new variables created during execution
+    new_keys = set(_locals.keys()) - original_keys
+    new_vars = {key: _locals[key] for key in new_keys}
+    return result, new_vars
 ```
 
 ### 3. Create the CodeAct graph
