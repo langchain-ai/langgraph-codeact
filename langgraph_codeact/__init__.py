@@ -69,10 +69,11 @@ Reminder: use python code snippets to call tools"""
 
     def sandbox(state: CodeActState):
         script = state["script"]
-        context = state.get("context", {})
+        old_context = state.get("context", {})
+        context = {**old_context, **{tool.name: tool.func for tool in _tools}}
         # execute the script
         output, new_vars = eval_fn(script, context)
-        new_context = {**context, **new_vars}
+        new_context = {**old_context, **new_vars}
         return {"messages": [{"role": "user", "content": output}], "context": new_context}
 
     agent = StateGraph(CodeActState)

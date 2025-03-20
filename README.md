@@ -26,6 +26,8 @@ pip install langchain langchain-mcp-adapters langchain-anthropic
 
 ## Example
 
+A full version of this in one file can be found [here](examples/math.py)
+
 ### 1. Define your tools
 
 You can use any tools you want, including custom tools, LangChain tools, or MCP tools. In this example, we define a few simple math functions.
@@ -117,7 +119,7 @@ import io
 def eval(code: str, _locals: dict) -> tuple:
     # Store original keys before execution
     original_keys = set(_locals.keys())
-    
+
     try:
         with contextlib.redirect_stdout(io.StringIO()) as f:
             exec(code, builtins.__dict__, _locals)
@@ -126,7 +128,7 @@ def eval(code: str, _locals: dict) -> tuple:
             result = "<code ran, no output printed to stdout>"
     except Exception as e:
         result = f"Error during execution: {repr(e)}"
-        
+
     # Determine new variables created during execution
     new_keys = set(_locals.keys()) - original_keys
     new_vars = {key: _locals[key] for key in new_keys}
@@ -144,7 +146,8 @@ from langgraph.checkpoint.memory import MemorySaver
 
 model = init_chat_model("claude-3-7-sonnet-latest", model_provider="anthropic")
 
-code_act = create_codeact(tools, model, eval, checkpointer=MemorySaver())
+code_act = create_codeact(model, tools, eval)
+agent = code_act.compile(checkpointer=MemorySaver())
 ```
 
 ### 4. Run it!
@@ -153,9 +156,14 @@ You can use the `.invoke()` method to get the final result, or the `.stream()` m
 
 ```py
 
-for typ, chunk in code_act.stream(
-    "A batter hits a baseball at 45.847 m/s at an angle of 23.474° above the horizontal. The outfielder, who starts facing the batter, picks up the baseball as it lands, then throws it back towards the batter at 24.12 m/s at an angle of 39.12 degrees. How far is the baseball from where the batter originally hit it? Assume zero air resistance.",
+messages = [{
+    "role": "user",
+    "content": "A batter hits a baseball at 45.847 m/s at an angle of 23.474° above the horizontal. The outfielder, who starts facing the batter, picks up the baseball as it lands, then throws it back towards the batter at 24.12 m/s at an angle of 39.12 degrees. How far is the baseball from where the batter originally hit it? Assume zero air resistance."
+}]
+for typ, chunk in agent.stream(
+    {"messages": messages},
     stream_mode=["values", "messages"],
+    config={"configurable": {"thread_id": 1}},
 ):
     if typ == "messages":
         print(chunk[0].content, end="")
