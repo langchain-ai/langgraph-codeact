@@ -6,7 +6,7 @@ import io
 from langchain.chat_models import init_chat_model
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import MemorySaver
-from langgraph_codeact import create_codeact
+from langgraph_codeact import create_codeact, create_default_prompt
 
 
 def eval(code: str, _locals: dict) -> tuple:
@@ -127,7 +127,10 @@ code_act = create_codeact(
     model,
     tools,
     eval,
-    prompt="Once you have the final answer, respond to the user with plain text, do not respond with a code snippet.",
+    prompt=create_default_prompt(
+        tools,
+        "Once you have the final answer, respond to the user with plain text, do not respond with a code snippet.",
+    ),
 )
 agent = code_act.compile(checkpointer=MemorySaver())
 

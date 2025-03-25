@@ -1,9 +1,8 @@
 import inspect
-from typing import Any, Callable, Optional, Sequence, Union, Literal, Tuple
+from typing import Any, Callable, Optional, Sequence, Union
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.tools import BaseTool
-from langchain_core.tools import tool as create_tool
+from langchain_core.tools import StructuredTool, tool as create_tool
 from langgraph.graph import START, END, StateGraph, MessagesState
 from langgraph.types import Command
 
@@ -11,32 +10,26 @@ from langgraph.types import Command
 class CodeActState(MessagesState):
     """State for CodeAct agent."""
 
-    script: str
+    script: Optional[str]
     """The Python code script to be executed."""
     context: dict[str, Any]
     """Dictionary containing the execution context with available tools and variables."""
 
 
-def create_codeact(
-    model: BaseChatModel,
-    tools: Sequence[Union[BaseTool, Callable]],
-    eval_fn: Callable[[str, dict[str, Callable]], tuple[str, dict]],
-    *,
-    prompt: Optional[str] = None,
-) -> StateGraph:
-    _tools = [t if isinstance(t, BaseTool) else create_tool(t) for t in tools]
-    # create the prompt
-    prompt = f"""
-{prompt or ""}
-
-You will be given a task to perform. You should output either
+def create_default_prompt(
+    tools: list[StructuredTool], base_prompt: Optional[str] = None
+):
+    """Create default prompt for the CodeAct agent."""
+    tools = [t if isinstance(t, StructuredTool) else create_tool(t) for t in tools]
+    prompt = f"{base_prompt}\n\n" if base_prompt else ""
+    prompt += f"""You will be given a task to perform. You should output either
 - a Python code snippet that provides the solution to the task, or a step towards the solution. Any output you want to extract from the code should be printed to the console. Code should be output in a fenced code block.
 - text to be shown directly to the user, if you want to ask for more information or provide the final answer.
 
 In addition to the Python Standard Library, you can use the following functions:
 """
 
-    for tool in _tools:
+    for tool in tools:
         prompt += f'''
 def {tool.name}{str(inspect.signature(tool.func))}:
     """{tool.description}"""
@@ -47,23 +40,53 @@ def {tool.name}{str(inspect.signature(tool.func))}:
 
 Variables defined at the top level of previous code snippets can be referenced in your code.
 
-Reminder: use python code snippets to call tools"""
+Reminder: use Python code snippets to call tools"""
+    return prompt
+
+
+def create_codeact(
+    model: BaseChatModel,
+    tools: Sequence[Union[StructuredTool, Callable]],
+    eval_fn: Callable[[str, dict[str, Callable]], tuple[str, dict]],
+    *,
+    prompt: Optional[str] = None,
+) -> StateGraph:
+    """Create a CodeAct agent.
+
+    Args:
+        model: The language model to use for generating code
+        tools: List of tools available to the agent. Can be passed as python functions or StructuredTool instances.
+        eval_fn: Function that executes code in a sandbox. Takes code string and locals dict,
+            returns a tuple of (stdout output, new variables dict)
+        prompt: Optional custom system prompt. If None, uses default prompt.
+            To customize default prompt you can use `create_default_prompt` helper:
+            `create_default_prompt(tools, "You are a helpful assistant.")`
+
+    Returns:
+        A StateGraph implementing the CodeAct architecture
+    """
+    tools = [t if isinstance(t, StructuredTool) else create_tool(t) for t in tools]
+
+    if prompt is None:
+        prompt = create_default_prompt(tools)
 
     # Make tools available to the code sandbox
-    tools_context = {tool.name: tool.func for tool in _tools}
+    tools_context = {tool.name: tool.func for tool in tools}
 
     def call_model(state: CodeActState) -> Command:
         messages = [{"role": "system", "content": prompt}] + state["messages"]
-        msg = model.invoke(messages)
-        if "```" in msg.content:
+        response = model.invoke(messages)
+        if "```" in response.content:
             # get content between fences
-            code = msg.content.split("```")[1]
+            code = response.content.split("```")[1]
             # remove first line, which is the language or empty string
             code = "\n".join(code.splitlines()[1:])
-            return Command(goto="sandbox", update={"messages": [msg], "script": code})
+            return Command(
+                goto="sandbox", update={"messages": [response], "script": code}
+            )
         else:
-            # no code block, return None
-            return Command(update={"messages": [msg], "script": ""})
+            # no code block, end the loop and respond to the user
+            return Command(update={"messages": [response], "script": None})
 
     def sandbox(state: CodeActState):
         script = state["script"]
