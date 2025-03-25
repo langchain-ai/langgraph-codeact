@@ -1,9 +1,7 @@
-import math
-
-from langchain_core.tools import tool
 import builtins
 import contextlib
 import io
+import math
 
 from langchain.chat_models import init_chat_model
 from langgraph_codeact import create_codeact
@@ -27,55 +25,57 @@ def eval(code: str, _locals: dict) -> tuple:
     new_keys = set(_locals.keys()) - original_keys
     new_vars = {key: _locals[key] for key in new_keys}
     return result, new_vars
-@tool
+
+
 def add(a: float, b: float) -> float:
     """Add two numbers together."""
     return a + b
 
-@tool
+
 def multiply(a: float, b: float) -> float:
     """Multiply two numbers together."""
     return a * b
 
-@tool
+
 def divide(a: float, b: float) -> float:
     """Divide two numbers."""
     return a / b
 
-@tool
+
 def subtract(a: float, b: float) -> float:
     """Subtract two numbers."""
     return a - b
 
-@tool
+
 def sin(a: float) -> float:
     """Take the sine of a number."""
     return math.sin(a)
 
-@tool
+
 def cos(a: float) -> float:
     """Take the cosine of a number."""
     return math.cos(a)
 
-@tool
+
 def radians(a: float) -> float:
     """Convert degrees to radians."""
     return math.radians(a)
 
-@tool
+
 def exponentiation(a: float, b: float) -> float:
     """Raise one number to the power of another."""
     return a**b
 
-@tool
+
 def sqrt(a: float) -> float:
     """Take the square root of a number."""
     return math.sqrt(a)
 
-@tool
+
 def ceil(a: float) -> float:
     """Round a number up to the nearest integer."""
     return math.ceil(a)
+
 
 tools = [
     add,
@@ -96,10 +96,12 @@ code_act = create_codeact(model, tools, eval)
 agent = code_act.compile(checkpointer=MemorySaver())
 
 if __name__ == "__main__":
-    messages = [{
-        "role": "user",
-        "content": "A batter hits a baseball at 45.847 m/s at an angle of 23.474° above the horizontal. The outfielder, who starts facing the batter, picks up the baseball as it lands, then throws it back towards the batter at 24.12 m/s at an angle of 39.12 degrees. How far is the baseball from where the batter originally hit it? Assume zero air resistance."
-    }]
+    messages = [
+        {
+            "role": "user",
+            "content": "A batter hits a baseball at 45.847 m/s at an angle of 23.474° above the horizontal. The outfielder, who starts facing the batter, picks up the baseball as it lands, then throws it back towards the batter at 24.12 m/s at an angle of 39.12 degrees. How far is the baseball from where the batter originally hit it? Assume zero air resistance.",
+        }
+    ]
     for typ, chunk in agent.stream(
         {"messages": messages},
         stream_mode=["values", "messages"],
@@ -109,5 +111,3 @@ if __name__ == "__main__":
             print(chunk[0].content, end="")
         elif typ == "values":
             print("\n\n---answer---\n\n", chunk)
-
-
