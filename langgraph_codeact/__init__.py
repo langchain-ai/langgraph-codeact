@@ -47,7 +47,7 @@ Reminder: use Python code snippets to call tools"""
 def create_codeact(
     model: BaseChatModel,
     tools: Sequence[Union[StructuredTool, Callable]],
-    eval_fn: Callable[[str, dict[str, Callable]], tuple[str, dict]],
+    eval_fn: Callable[[str, dict[str, Any]], tuple[str, dict[str, Any]]],
     *,
     prompt: Optional[str] = None,
 ) -> StateGraph:
