@@ -7,6 +7,7 @@ from typing import Any
 from langchain.chat_models import init_chat_model
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.memory import MemorySaver
+
 from langgraph_codeact import create_codeact, create_default_prompt
 
 
@@ -64,17 +65,14 @@ def base64_decode(text: str) -> str:
     Raises:
         Exception: If the input is not valid base64
     """
-    try:
-        # Add padding if needed
-        padding = 4 - (len(text) % 4)
-        if padding != 4:
-            text += "=" * padding
+    # Add padding if needed
+    padding = 4 - (len(text) % 4)
+    if padding != 4:
+        text += "=" * padding
 
-        # Decode the base64 string
-        decoded_bytes = base64.b64decode(text)
-        return decoded_bytes.decode("utf-8")
-    except Exception as e:
-        raise Exception(f"Invalid base64 input: {str(e)}")
+    # Decode the base64 string
+    decoded_bytes = base64.b64decode(text)
+    return decoded_bytes.decode("utf-8")
 
 
 def caesar_shift_encode(text: str, shift: int) -> str:
