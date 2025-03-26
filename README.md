@@ -98,7 +98,7 @@ You can use any code sandbox you want, pass it in as a function which accepts tw
 - the string of code to run
 - the dictionary of locals to run it in (includes the tools, and any variables you set in the previous turns)
 
-[!Warning]
+> [!Warning]
 > Use a sandboxed environment in production! The `eval` function below is just for demonstration purposes, not safe!
 
 ```py
