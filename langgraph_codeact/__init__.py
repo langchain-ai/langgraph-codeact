@@ -2,8 +2,9 @@ import inspect
 from typing import Any, Callable, Optional, Sequence, Union
 
 from langchain_core.language_models import BaseChatModel
-from langchain_core.tools import StructuredTool, tool as create_tool
-from langgraph.graph import START, END, StateGraph, MessagesState
+from langchain_core.tools import StructuredTool
+from langchain_core.tools import tool as create_tool
+from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.types import Command
 
 
@@ -16,13 +17,11 @@ class CodeActState(MessagesState):
     """Dictionary containing the execution context with available tools and variables."""
 
 
-def create_default_prompt(
-    tools: list[StructuredTool], base_prompt: Optional[str] = None
-):
+def create_default_prompt(tools: list[StructuredTool], base_prompt: Optional[str] = None):
     """Create default prompt for the CodeAct agent."""
     tools = [t if isinstance(t, StructuredTool) else create_tool(t) for t in tools]
     prompt = f"{base_prompt}\n\n" if base_prompt else ""
-    prompt += f"""You will be given a task to perform. You should output either
+    prompt += """You will be given a task to perform. You should output either
 - a Python code snippet that provides the solution to the task, or a step towards the solution. Any output you want to extract from the code should be printed to the console. Code should be output in a fenced code block.
 - text to be shown directly to the user, if you want to ask for more information or provide the final answer.
 
@@ -81,9 +80,7 @@ def create_codeact(
             code = response.content.split("```")[1]
             # remove first line, which is the language or empty string
             code = "\n".join(code.splitlines()[1:])
-            return Command(
-                goto="sandbox", update={"messages": [response], "script": code}
-            )
+            return Command(goto="sandbox", update={"messages": [response], "script": code})
         else:
             # no code block, end the loop and respond to the user
             return Command(update={"messages": [response], "script": None})
