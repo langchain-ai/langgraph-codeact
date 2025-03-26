@@ -26,7 +26,7 @@ pip install langchain langchain-anthropic
 
 ## Example
 
-A full version of this in one file can be found [here](examples/math.py)
+A full version of this in one file can be found [here](examples/math_example.py)
 
 ### 1. Define your tools
 
