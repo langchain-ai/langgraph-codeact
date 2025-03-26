@@ -1,7 +1,7 @@
 [project]
 name = "langgraph-codeact"
 version = "0.1.0"
-description = ""
+description = "LangGraph implementation of CodeAct agent that generates and executes code instead of tool calling."
 authors = [
     {name = "Nuno Campos",email = "nuno@langchain.dev"}
 ]
