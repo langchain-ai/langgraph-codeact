@@ -1,6 +1,6 @@
-# langgraph-codeact
+# New Repository for LangGraph CodeAct Agent
 
-This library implements the [CodeAct architecture](https://arxiv.org/abs/2402.01030) in LangGraph. This is the architecture is used by [Manus.im](https://manus.im/). It implements an alternative to JSON function-calling, which enables solving more complex tasks in less steps. This is achieved by making use of the full power of a Turing complete programming language (such as Python used here) to combine and transform the outputs of multiple tools.
+This repository contains the LangGraph CodeAct agent and provides instructions on how to deploy and use it in your system workflow.
 
 ## Features
 

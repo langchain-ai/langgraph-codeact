@@ -1,0 +1,55 @@
+name: Run CI Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:  # Allows to trigger the workflow manually in GitHub UI
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  setup_agent:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install langgraph_codeact
+
+  lint:
+    needs: setup_agent
+    strategy:
+      matrix:
+        python-version:
+          - "3.12"
+    uses:
+      ./.github/workflows/_lint.yml
+    with:
+      working-directory: .
+      python-version: ${{ matrix.python-version }}
+    secrets: inherit
+
+  test:
+    needs: setup_agent
+    strategy:
+      matrix:
+        python-version:
+          - "3.10"
+          - "3.12"
+    uses:
+      ./.github/workflows/_test.yml
+    with:
+      working-directory: .
+      python-version: ${{ matrix.python-version }}
+    secrets: inherit
