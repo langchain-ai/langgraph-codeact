@@ -40,3 +40,8 @@ jobs:
         shell: bash
         run: |
           make test
+
+      - name: Run agent specific tests
+        shell: bash
+        run: |
+          python -m unittest discover -s tests/agent_tests
