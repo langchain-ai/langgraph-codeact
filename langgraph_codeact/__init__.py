@@ -7,6 +7,8 @@ from langchain_core.tools import tool as create_tool
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.types import Command
 
+from langgraph_codeact.utils import extract_and_combine_codeblocks
+
 
 class CodeActState(MessagesState):
     """State for CodeAct agent."""
@@ -75,11 +77,9 @@ def create_codeact(
     def call_model(state: CodeActState) -> Command:
         messages = [{"role": "system", "content": prompt}] + state["messages"]
         response = model.invoke(messages)
-        if "```" in response.content:
-            # get content between fences
-            code = response.content.split("```")[1]
-            # remove first line, which is the language or empty string
-            code = "\n".join(code.splitlines()[1:])
+        # Extract and combine all code blocks
+        code = extract_and_combine_codeblocks(response.content)
+        if code:
             return Command(goto="sandbox", update={"messages": [response], "script": code})
         else:
             # no code block, end the loop and respond to the user
