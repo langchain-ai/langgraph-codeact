@@ -1,5 +1,5 @@
 import inspect
-from typing import Any, Callable, Optional, Sequence, Union
+from typing import Any, Callable, Optional, Sequence, Type, TypeVar, Union
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import StructuredTool
@@ -17,6 +17,10 @@ class CodeActState(MessagesState):
     """The Python code script to be executed."""
     context: dict[str, Any]
     """Dictionary containing the execution context with available tools and variables."""
+
+
+StateSchema = TypeVar("StateSchema", bound=CodeActState)
+StateSchemaType = Type[StateSchema]
 
 
 def create_default_prompt(tools: list[StructuredTool], base_prompt: Optional[str] = None):
@@ -51,6 +55,7 @@ def create_codeact(
     eval_fn: Callable[[str, dict[str, Any]], tuple[str, dict[str, Any]]],
     *,
     prompt: Optional[str] = None,
+    state_schema: StateSchemaType = CodeActState,
 ) -> StateGraph:
     """Create a CodeAct agent.
 
@@ -62,6 +67,7 @@ def create_codeact(
         prompt: Optional custom system prompt. If None, uses default prompt.
             To customize default prompt you can use `create_default_prompt` helper:
             `create_default_prompt(tools, "You are a helpful assistant.")`
+        state_schema: The state schema to use for the agent.
 
     Returns:
         A StateGraph implementing the CodeAct architecture
@@ -74,7 +80,7 @@ def create_codeact(
     # Make tools available to the code sandbox
     tools_context = {tool.name: tool.func for tool in tools}
 
-    def call_model(state: CodeActState) -> Command:
+    def call_model(state: StateSchema) -> Command:
         messages = [{"role": "system", "content": prompt}] + state["messages"]
         response = model.invoke(messages)
         # Extract and combine all code blocks
@@ -85,7 +91,7 @@ def create_codeact(
             # no code block, end the loop and respond to the user
             return Command(update={"messages": [response], "script": None})
 
-    def sandbox(state: CodeActState):
+    def sandbox(state: StateSchema):
         script = state["script"]
         existing_context = state.get("context", {})
         context = {**existing_context, **tools_context}
@@ -97,7 +103,7 @@ def create_codeact(
             "context": new_context,
         }
 
-    agent = StateGraph(CodeActState)
+    agent = StateGraph(state_schema)
     agent.add_node(call_model, destinations=(END, "sandbox"))
     agent.add_node(sandbox)
     agent.add_edge(START, "call_model")
