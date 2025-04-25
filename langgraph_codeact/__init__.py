@@ -1,5 +1,5 @@
 import inspect
-from typing import Any, Callable, Optional, Sequence, Type, TypeVar, Union
+from typing import Any, Awaitable, Callable, Optional, Sequence, Type, TypeVar, Union
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import StructuredTool
@@ -8,6 +8,9 @@ from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.types import Command
 
 from langgraph_codeact.utils import extract_and_combine_codeblocks
+
+EvalFunction = Callable[[str, dict[str, Any]], tuple[str, dict[str, Any]]]
+EvalCoroutine = Callable[[str, dict[str, Any]], Awaitable[tuple[str, dict[str, Any]]]]
 
 
 class CodeActState(MessagesState):
@@ -52,7 +55,7 @@ Reminder: use Python code snippets to call tools"""
 def create_codeact(
     model: BaseChatModel,
     tools: Sequence[Union[StructuredTool, Callable]],
-    eval_fn: Callable[[str, dict[str, Any]], tuple[str, dict[str, Any]]],
+    eval_fn: Union[EvalFunction, EvalCoroutine],
     *,
     prompt: Optional[str] = None,
     state_schema: StateSchemaType = CodeActState,
@@ -62,7 +65,7 @@ def create_codeact(
     Args:
         model: The language model to use for generating code
         tools: List of tools available to the agent. Can be passed as python functions or StructuredTool instances.
-        eval_fn: Function that executes code in a sandbox. Takes code string and locals dict,
+        eval_fn: Function or coroutine that executes code in a sandbox. Takes code string and locals dict,
             returns a tuple of (stdout output, new variables dict)
         prompt: Optional custom system prompt. If None, uses default prompt.
             To customize default prompt you can use `create_default_prompt` helper:
@@ -91,17 +94,31 @@ def create_codeact(
             # no code block, end the loop and respond to the user
             return Command(update={"messages": [response], "script": None})
 
-    def sandbox(state: StateSchema):
-        script = state["script"]
-        existing_context = state.get("context", {})
-        context = {**existing_context, **tools_context}
-        # Execute the script in the sandbox
-        output, new_vars = eval_fn(script, context)
-        new_context = {**existing_context, **new_vars}
-        return {
-            "messages": [{"role": "user", "content": output}],
-            "context": new_context,
-        }
+    # If eval_fn is a async, we define async node function.
+    if inspect.iscoroutinefunction(eval_fn):
+
+        async def sandbox(state: StateSchema):
+            existing_context = state.get("context", {})
+            context = {**existing_context, **tools_context}
+            # Execute the script in the sandbox
+            output, new_vars = await eval_fn(state["script"], context)
+            new_context = {**existing_context, **new_vars}
+            return {
+                "messages": [{"role": "user", "content": output}],
+                "context": new_context,
+            }
+    else:
+
+        def sandbox(state: StateSchema):
+            existing_context = state.get("context", {})
+            context = {**existing_context, **tools_context}
+            # Execute the script in the sandbox
+            output, new_vars = eval_fn(state["script"], context)
+            new_context = {**existing_context, **new_vars}
+            return {
+                "messages": [{"role": "user", "content": output}],
+                "context": new_context,
+            }
 
     agent = StateGraph(state_schema)
     agent.add_node(call_model, destinations=(END, "sandbox"))
