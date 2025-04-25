@@ -100,6 +100,7 @@ You can use any code sandbox you want, pass it in as a function which accepts tw
 
 > [!Warning]
 > Use a sandboxed environment in production! The `eval` function below is just for demonstration purposes, not safe!
+> See example of using a secure [LangChain Sandbox](https://github.com/langchain-ai/langchain-sandbox) [here](examples/pyodide_sandbox_example.py)
 
 ```py
 import builtins
