@@ -38,8 +38,10 @@ In addition to the Python Standard Library, you can use the following functions:
 """
 
     for tool in tools:
+        # Use coroutine if it exists, otherwise use func
+        tool_callable = tool.coroutine if hasattr(tool, "coroutine") and tool.coroutine is not None else tool.func
         prompt += f'''
-def {tool.name}{str(inspect.signature(tool.func))}:
+def {tool.name}{str(inspect.signature(tool_callable))}:
     """{tool.description}"""
     ...
 '''
