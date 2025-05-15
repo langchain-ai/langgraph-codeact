@@ -1,4 +1,5 @@
 import inspect
+import re
 from typing import Any, Awaitable, Callable, Optional, Sequence, Type, TypeVar, Union
 
 from langchain_core.language_models import BaseChatModel
@@ -26,6 +27,19 @@ StateSchema = TypeVar("StateSchema", bound=CodeActState)
 StateSchemaType = Type[StateSchema]
 
 
+def make_safe_function_name(name: str) -> str:
+    """Convert a tool name to a valid Python function name."""
+    # Replace non-alphanumeric characters with underscores
+    safe_name = re.sub(r'[^a-zA-Z0-9_]', '_', name)
+    # Ensure the name doesn't start with a digit
+    if safe_name and safe_name[0].isdigit():
+        safe_name = f"tool_{safe_name}"
+    # Handle empty name edge case
+    if not safe_name:
+        safe_name = "unnamed_tool"
+    return safe_name
+
+
 def create_default_prompt(tools: list[StructuredTool], base_prompt: Optional[str] = None):
     """Create default prompt for the CodeAct agent."""
     tools = [t if isinstance(t, StructuredTool) else create_tool(t) for t in tools]
@@ -40,8 +54,13 @@ In addition to the Python Standard Library, you can use the following functions:
     for tool in tools:
         # Use coroutine if it exists, otherwise use func
         tool_callable = tool.coroutine if hasattr(tool, "coroutine") and tool.coroutine is not None else tool.func
+        # Create a safe function name
+        safe_name = make_safe_function_name(tool.name)
+        # Determine if it's an async function
+        is_async = inspect.iscoroutinefunction(tool_callable)
+        # Add appropriate function definition
         prompt += f'''
-def {tool.name}{str(inspect.signature(tool_callable))}:
+{"async " if is_async else ""}def {safe_name}{str(inspect.signature(tool_callable))}:
     """{tool.description}"""
     ...
 '''
@@ -82,8 +101,14 @@ def create_codeact(
     if prompt is None:
         prompt = create_default_prompt(tools)
 
-    # Make tools available to the code sandbox
-    tools_context = {tool.name: tool.func for tool in tools}
+    # Make tools available to the code sandbox - use safe names for keys
+    tools_context = {}
+    for tool in tools:
+        safe_name = make_safe_function_name(tool.name)
+        # Use coroutine if it exists, otherwise use func (same as in create_default_prompt)
+        tool_callable = tool.coroutine if hasattr(tool, "coroutine") and tool.coroutine is not None else tool.func
+        # Only use the safe name for consistency with the prompt
+        tools_context[safe_name] = tool_callable
 
     def call_model(state: StateSchema) -> Command:
         messages = [{"role": "system", "content": prompt}] + state["messages"]
