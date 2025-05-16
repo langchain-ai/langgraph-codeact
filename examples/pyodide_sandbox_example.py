@@ -1,3 +1,4 @@
+# pip install langgraph-codeact "langchain[anthropic]"
 import asyncio
 import inspect
 from typing import Any
@@ -9,21 +10,13 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph_codeact import EvalCoroutine, create_codeact
 
 
-def create_pyodide_eval_fn(
-    sandbox_dir: str = "./sessions", session_id: str | None = None
-) -> EvalCoroutine:
+def create_pyodide_eval_fn(sandbox: PyodideSandbox) -> EvalCoroutine:
     """Create an eval_fn that uses PyodideSandbox.
-
-    Args:
-        sandbox_dir: Directory to store session files
-        session_id: ID of the session to use
-
-    Returns:
-        A function that evaluates code using PyodideSandbox
     """
-    sandbox = PyodideSandbox(sandbox_dir, allow_net=True)
 
-    async def async_eval_fn(code: str, _locals: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    async def async_eval_fn(
+        code: str, _locals: dict[str, Any]
+    ) -> tuple[str, dict[str, Any]]:
         # Create a wrapper function that will execute the code and return locals
         wrapper_code = f"""
 def execute():
@@ -50,7 +43,6 @@ execute()
             # Execute the code and get the result
             response = await sandbox.execute(
                 code=context_setup + "\n\n" + wrapper_code,
-                session_id=session_id,
             )
 
             # Check if execution was successful
@@ -59,7 +51,9 @@ execute()
 
             # Get the output from stdout
             output = (
-                response.stdout if response.stdout else "<Code ran, no output printed to stdout>"
+                response.stdout
+                if response.stdout
+                else "<Code ran, no output printed to stdout>"
             )
             result = response.result
 
@@ -69,7 +63,9 @@ execute()
 
             # Get the new variables by comparing with original locals
             new_vars = {
-                k: v for k, v in result.items() if k not in _locals and not k.startswith("_")
+                k: v
+                for k, v in result.items()
+                if k not in _locals and not k.startswith("_")
             }
             return output, new_vars
 
@@ -154,7 +150,8 @@ tools = [
 
 model = init_chat_model("claude-3-7-sonnet-latest", model_provider="anthropic")
 
-eval_fn = create_pyodide_eval_fn()
+sandbox = PyodideSandbox(allow_net=True)
+eval_fn = create_pyodide_eval_fn(sandbox)
 code_act = create_codeact(model, tools, eval_fn)
 agent = code_act.compile(checkpointer=MemorySaver())
 
